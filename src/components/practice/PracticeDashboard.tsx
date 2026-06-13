@@ -135,7 +135,7 @@ export function PracticeDashboard() {
     const marketItem = mockMarketData.find(m => m.symbol === trade.symbol);
     if (!marketItem) return;
 
-    const exitPrice = marketItem.price + (Math.random() - 0.5) * marketItem.price * 0.02;
+    const exitPrice = marketItem.price;
     const pnl = trade.side === 'buy'
       ? (exitPrice - trade.entryPrice) * trade.quantity
       : (trade.entryPrice - exitPrice) * trade.quantity;
@@ -157,7 +157,7 @@ export function PracticeDashboard() {
         status: 'closed' as const,
         exitPrice,
         pnl,
-        aiFeedback: feedbacks[Math.floor(Math.random() * feedbacks.length)],
+        aiFeedback: feedbacks[pnl > 0 ? 0 : 1],
         closedAt: new Date().toISOString(),
       } : t
     ));
@@ -305,7 +305,8 @@ export function PracticeDashboard() {
           </div>
 
           <div>
-            <h2 className="text-sm font-medium text-slate-400 mb-3">Market Data</h2>
+            <h2 className="text-sm font-medium text-slate-400 mb-1">Scenario Prices</h2>
+            <p className="text-[11px] text-slate-500 mb-3">Fixed educational prices, not live market data.</p>
             <div className="space-y-1">
               {mockMarketData.slice(0, 6).map(m => (
                 <button

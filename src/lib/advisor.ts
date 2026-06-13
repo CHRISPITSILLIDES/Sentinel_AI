@@ -5,6 +5,10 @@ export interface AdvisorMessage {
   content: string;
 }
 
+export interface AdvisorContext {
+  summary: string;
+}
+
 const modelId = 'SmolLM2-360M-Instruct-q4f16_1-MLC';
 let enginePromise: Promise<MLCEngineInterface> | null = null;
 
@@ -15,8 +19,12 @@ Never request passwords, full card numbers, authentication codes, government IDs
 Do not promise investment returns. For suspected fraud, prioritize stopping payment, contacting the bank through an official channel, preserving evidence, and reporting it.
 Keep answers under 220 words and clearly distinguish education from professional advice.`;
 
-function offlineAdvice(question: string) {
+function offlineAdvice(question: string, context?: AdvisorContext) {
   const text = question.toLowerCase();
+  if ((text.includes('latest') || text.includes('payment') || text.includes('decision')) && context?.summary.includes('Latest decision:')) {
+    const latest = context.summary.split('\n').find(line => line.startsWith('Latest decision:'));
+    return `${latest}\n\nReview the listed evidence in Decision Shield. If the recommendation is block, verify the seller through a separately sourced official channel before doing anything else.`;
+  }
   if (text.includes('debt') || text.includes('loan') || text.includes('credit')) {
     return 'Start by listing each balance, interest rate, and minimum payment. Keep minimums current, preserve a small emergency buffer, then direct extra cash to the highest-interest debt. I can help turn those numbers into a monthly plan.';
   }
@@ -45,12 +53,12 @@ async function getEngine(onProgress?: (progress: string) => void) {
   return enginePromise;
 }
 
-export async function askAdvisor(messages: AdvisorMessage[], onProgress?: (progress: string) => void) {
+export async function askAdvisor(messages: AdvisorMessage[], context?: AdvisorContext, onProgress?: (progress: string) => void) {
   try {
     const engine = await getEngine(onProgress);
     const completion = await engine.chat.completions.create({
       messages: [
-        { role: 'system', content: systemPrompt },
+        { role: 'system', content: `${systemPrompt}\n\nCurrent local app context:\n${context?.summary || 'No dashboard context is available.'}` },
         ...messages.slice(-8),
       ],
       temperature: 0.3,
@@ -60,6 +68,6 @@ export async function askAdvisor(messages: AdvisorMessage[], onProgress?: (progr
     if (!content) throw new Error('Local model returned no response');
     return { content, source: 'Local open-source AI' as const };
   } catch {
-    return { content: offlineAdvice(messages[messages.length - 1]?.content || ''), source: 'Instant offline guide' as const };
+    return { content: offlineAdvice(messages[messages.length - 1]?.content || '', context), source: 'Instant offline guide' as const };
   }
 }

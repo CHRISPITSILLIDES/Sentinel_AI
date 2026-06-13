@@ -1,7 +1,10 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { Loader2, RotateCcw, Send, Shield, Sparkles } from 'lucide-react';
 import { askAdvisor, AdvisorMessage } from '../../lib/advisor';
-import { usePersistentState } from '../../lib/storage';
+import { readStoredValue, usePersistentState } from '../../lib/storage';
+import type { DecisionResult } from '../../lib/decisionEngine';
+import type { CategoryLimit, Goal, ShieldRule } from '../../stores/appStore';
+import { mockCategoryLimits, mockGoals, mockShieldRules } from '../../stores/appStore';
 import { Button } from '../ui/Button';
 import { GlassCard } from '../ui/GlassCard';
 
@@ -45,8 +48,19 @@ export function GuideDashboard() {
     setLoadingProgress('Starting local advisor...');
 
     try {
+      const goals = readStoredValue<Goal[]>('goals', mockGoals);
+      const rules = readStoredValue<ShieldRule[]>('shield-rules', mockShieldRules);
+      const limits = readStoredValue<CategoryLimit[]>('category-limits', mockCategoryLimits);
+      const latest = readStoredValue<DecisionResult | null>('latest-decision', null);
+      const contextSummary = [
+        `Goals: ${goals.map(goal => `${goal.name} EUR ${goal.currentAmount}/${goal.targetAmount}${goal.isShieldProtected ? ' protected' : ''}`).join('; ')}`,
+        `Active rules: ${rules.filter(rule => rule.isActive).map(rule => rule.ruleText).join('; ') || 'none'}`,
+        `Category limits: ${limits.filter(limit => limit.isActive).map(limit => `${limit.category} EUR ${limit.currentSpent}/${limit.monthlyLimit}`).join('; ')}`,
+        latest ? `Latest decision: ${latest.input.sellerName}, EUR ${latest.input.amount}, risk ${latest.score}/100, recommended ${latest.action}. Evidence: ${latest.evidence.map(item => item.label).join(', ') || 'none'}` : 'Latest decision: none',
+      ].join('\n');
       const answer = await askAdvisor(
         conversation.slice(-10).map(({ role, content: messageContent }) => ({ role, content: messageContent })),
+        { summary: contextSummary },
         setLoadingProgress,
       );
       setMessages(previous => [...previous, {
@@ -82,6 +96,10 @@ export function GuideDashboard() {
           <RotateCcw size={14} /> New chat
         </Button>
       </div>
+
+      <GlassCard className="p-3">
+        <div className="flex items-start gap-2"><Shield size={15} className="text-blue-300 mt-0.5" /><p className="text-xs text-slate-400">NataGuide can use your locally saved goals, limits, active rules, and latest payment analysis. It does not receive card numbers or authentication data.</p></div>
+      </GlassCard>
 
       <GlassCard className="p-4 space-y-4 h-[28rem] overflow-y-auto" gradient>
         {messages.map(message => (

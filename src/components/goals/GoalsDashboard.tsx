@@ -9,6 +9,7 @@ import { mockGoals, mockCategoryLimits } from '../../stores/appStore';
 import type { Goal, CategoryLimit } from '../../stores/appStore';
 import { subscribeToAppActions } from '../../lib/actions';
 import { usePersistentState } from '../../lib/storage';
+import type { DecisionResult } from '../../lib/decisionEngine';
 
 const categoryIcons: Record<string, React.ReactNode> = {
   rent: <Home size={16} />,
@@ -178,6 +179,7 @@ export function GoalsDashboard() {
   const [emergencyAllocation, setEmergencyAllocation] = usePersistentState('emergency-allocation', 5);
   const [billsBuffer, setBillsBuffer] = usePersistentState('bills-buffer', 600);
   const [extraMonthly, setExtraMonthly] = usePersistentState('extra-monthly', 50);
+  const [latestDecision] = usePersistentState<DecisionResult | null>('latest-decision', null);
   const [customContribution, setCustomContribution] = useState('');
 
   const totalRemaining = goals.reduce((sum, g) => sum + Math.max(0, g.targetAmount - g.currentAmount), 0);
@@ -256,6 +258,16 @@ export function GoalsDashboard() {
           </Button>
         </div>
       </div>
+
+      {latestDecision && (
+        <GlassCard className="p-4 border-amber-500/20">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div><div className="text-xs uppercase tracking-wider text-amber-300">Latest payment impact</div><h2 className="text-base font-semibold text-white mt-1">{latestDecision.input.sellerName} · EUR {latestDecision.input.amount.toFixed(2)}</h2><p className="text-xs text-slate-400 mt-1">The payment was scored {latestDecision.score}/100 with a recommendation to {latestDecision.action}.</p></div>
+            <div className="text-sm text-right text-slate-300">{latestDecision.goalImpact.filter(impact => impact.protected).length} protected goals affected</div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-3">{latestDecision.goalImpact.slice(0, 4).map(impact => <div key={impact.goalId} className="rounded-xl bg-slate-950/80 border border-slate-700 p-3"><div className="text-sm text-white">{impact.goalName}</div><div className="text-xs text-slate-400 mt-1">About {impact.estimatedDelayDays} days delay or EUR {impact.additionalMonthlyNeeded.toFixed(2)} extra per month</div></div>)}</div>
+        </GlassCard>
+      )}
 
       {/* Overview Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">

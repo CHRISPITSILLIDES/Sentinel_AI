@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Shield, TrendingUp, Trophy, Target, User, Search, Command, Sparkles, Brain } from 'lucide-react';
+import { Shield, Trophy, Target, User, Search, Command, Brain, CheckCircle } from 'lucide-react';
 import { GuideDashboard } from './components/guide/GuideDashboard';
 import { ShieldDashboard } from './components/shield/ShieldDashboard';
 import { PracticeDashboard } from './components/practice/PracticeDashboard';
@@ -7,6 +7,10 @@ import { GoalsDashboard } from './components/goals/GoalsDashboard';
 import { AccountDashboard } from './components/account/AccountDashboard';
 import { CommandBar } from './components/shared/CommandBar';
 import type { Pillar } from './stores/appStore';
+import { Modal } from './components/ui/Modal';
+import { Button } from './components/ui/Button';
+import { usePersistentState } from './lib/storage';
+import { dispatchAppAction } from './lib/actions';
 
 const pillars: { key: Pillar; label: string; icon: React.ReactNode; gradient: string; color: string }[] = [
   { key: 'shield', label: 'Shield', icon: <Shield size={20} />, gradient: 'from-blue-500 to-blue-600', color: '#3b82f6' },
@@ -20,6 +24,7 @@ function App() {
   const [activePillar, setActivePillar] = useState<Pillar>('shield');
   const [commandBarOpen, setCommandBarOpen] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [onboardingComplete, setOnboardingComplete] = usePersistentState('onboarding-complete', false);
 
   useEffect(() => {
     setIsLoaded(true);
@@ -50,7 +55,11 @@ function App() {
     }
   };
 
-  const activePillarConfig = pillars.find(p => p.key === activePillar);
+  const startDemo = () => {
+    setActivePillar('shield');
+    setOnboardingComplete(true);
+    window.setTimeout(() => dispatchAppAction('shield_demo'), 0);
+  };
 
   return (
     <div className="h-screen flex flex-col bg-nata-bg overflow-hidden bg-cover bg-center" style={{ backgroundImage: `url(${assetUrl('bck.png')})`, backgroundAttachment: 'fixed' }}>
@@ -117,6 +126,15 @@ function App() {
         onClose={() => setCommandBarOpen(false)}
         onNavigate={handleNavigate}
       />
+
+      <Modal isOpen={!onboardingComplete} onClose={() => setOnboardingComplete(true)} title="Welcome to nataCONNECT">
+        <div className="space-y-4">
+          <p className="text-sm text-slate-300">This prototype has one main story: explain a suspicious payment before money moves, show the evidence, and reveal what approving it would do to protected goals.</p>
+          <div className="space-y-2">{['Analyze a fake bank payment', 'Inspect the triggered rules and risk evidence', 'Block it and preserve your goals'].map((step, index) => <div key={step} className="flex items-center gap-3 p-3 rounded-xl bg-slate-950/80 border border-slate-700"><CheckCircle size={16} className="text-blue-300" /><span className="text-sm text-white">{index + 1}. {step}</span></div>)}</div>
+          <Button variant="primary" className="w-full" onClick={startDemo}>Start the 60-second demo</Button>
+          <button onClick={() => setOnboardingComplete(true)} className="w-full text-xs text-slate-500 hover:text-slate-300">Explore on my own</button>
+        </div>
+      </Modal>
     </div>
   );
 }
