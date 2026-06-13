@@ -10,6 +10,6 @@ See the `LICENSE` file for the full text of the MIT License.
 
 ## Sentinel_AI Deployment
 
-This synchronized copy is deployed from `CHRISPITSILLIDES/Sentinel_AI` using GitHub Pages.
+This synchronized copy is deployed from `CHRISPITSILLIDES/nata_CONNECT` using GitHub Pages.
 
-**Live site:** https://chrispitsillides.github.io/Sentinel_AI/
+**Live site:** https://chrispitsillides.github.io/nata_CONNECT/
