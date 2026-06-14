@@ -159,6 +159,35 @@ body {
     100% { transform: scale(1); opacity: 1; }
   }
 
+  .animate-shake {
+    animation: shake 0.35s ease-in-out;
+  }
+
+  .animate-radar-sweep {
+    animation: radar-sweep 2s ease-in-out infinite;
+  }
+
+  .animate-pulse-slow {
+    animation: pulse-slow 2.5s ease-in-out infinite;
+  }
+
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    20%, 60% { transform: translateX(-7px); }
+    40%, 80% { transform: translateX(7px); }
+  }
+
+  @keyframes radar-sweep {
+    0% { transform: rotate(0deg); opacity: 0.5; }
+    50% { transform: rotate(180deg); opacity: 1; }
+    100% { transform: rotate(360deg); opacity: 0.5; }
+  }
+
+  @keyframes pulse-slow {
+    0%, 100% { opacity: 0.45; transform: scale(1); }
+    50% { opacity: 0.9; transform: scale(1.02); }
+  }
+
   /* Card gradient backgrounds */
   .card-gradient-blue {
     background: linear-gradient(135deg, rgba(30, 58, 138, 0.4) 0%, rgba(37, 99, 235, 0.25) 100%);

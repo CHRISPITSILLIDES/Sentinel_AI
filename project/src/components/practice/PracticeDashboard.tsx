@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
 import { TrendingUp, TrendingDown, Brain, Trophy, Target, Zap, Award, Star, BarChart3, RefreshCw, ArrowRight } from 'lucide-react';
 import { GlassCard } from '../ui/GlassCard';
 import { Button } from '../ui/Button';
@@ -6,9 +6,8 @@ import { Badge } from '../ui/Badge';
 import { Modal } from '../ui/Modal';
 import { ProgressRing } from '../ui/ProgressRing';
 import { mockPracticeSession, mockPracticeTrades, mockAchievements, mockMarketData, mockPracticeSessions } from '../../stores/appStore';
+import { marketAPI } from '../../api/market';
 import type { PracticeSession, PracticeTrade } from '../../stores/appStore';
-import { subscribeToAppActions } from '../../lib/actions';
-import { usePersistentState } from '../../lib/storage';
 
 function SkillScoreRing({ score }: { score: number }) {
   return (
@@ -81,29 +80,37 @@ function PracticeTradeItem({ trade }: { trade: PracticeTrade }) {
 }
 
 export function PracticeDashboard() {
-  const [sessions, setSessions] = usePersistentState<PracticeSession[]>('practice-sessions', mockPracticeSessions);
-  const [currentSessionId, setCurrentSessionId] = usePersistentState<string>('practice-current-session', mockPracticeSessions[0]?.id || String(Date.now()));
-  const [trades, setTrades] = usePersistentState<PracticeTrade[]>('practice-trades', mockPracticeTrades);
+  const [sessions, setSessions] = useState<PracticeSession[]>(mockPracticeSessions);
+  const [currentSessionId, setCurrentSessionId] = useState<string>(mockPracticeSessions[0]?.id || String(Date.now()));
+  const [trades, setTrades] = useState<PracticeTrade[]>(mockPracticeTrades);
   const [showTradeModal, setShowTradeModal] = useState(false);
   const [selectedSymbol, setSelectedSymbol] = useState('');
   const [tradeSide, setTradeSide] = useState<'buy' | 'sell'>('buy');
   const [tradeQuantity, setTradeQuantity] = useState('1');
-  const [tradeError, setTradeError] = useState('');
+  const [marketData, setMarketData] = useState<any[]>(mockMarketData);
+  const [loadingMarket, setLoadingMarket] = useState(false);
+  const [live, setLive] = useState(true);
 
   const session = sessions.find(s => s.id === currentSessionId) || sessions[0] || mockPracticeSession;
   const totalPnl = session.balance - session.initialBalance;
   const winRate = session.totalTrades > 0 ? ((session.winningTrades / session.totalTrades) * 100).toFixed(0) : '0';
 
+  // Ensure numeric fields are numbers to avoid NaN in UI
+  session.balance = Number(session.balance) || 0;
+  session.initialBalance = Number(session.initialBalance) || 0;
+  session.skillScore = Number(session.skillScore) || 0;
+  session.totalTrades = Number(session.totalTrades) || 0;
+  session.winningTrades = Number(session.winningTrades) || 0;
+
   const executeTrade = () => {
-    const marketItem = mockMarketData.find(m => m.symbol === selectedSymbol);
-    if (!marketItem) return setTradeError('Choose a market symbol.');
+    const marketItem = marketData.find(m => m.symbol === selectedSymbol);
+    if (!marketItem) return;
 
     const qty = parseFloat(tradeQuantity);
-    const price = marketItem.price;
+    const price = marketItem.current || marketItem.c || marketItem.price || 0;
     const cost = qty * price;
 
-    if (!Number.isFinite(qty) || qty <= 0) return setTradeError('Enter a valid quantity.');
-    if (tradeSide === 'buy' && cost > session.balance) return setTradeError('This virtual account does not have enough available cash.');
+    if (tradeSide === 'buy' && cost > session.balance) return;
 
     const newTrade: PracticeTrade = {
       id: String(Date.now()),
@@ -123,7 +130,6 @@ export function PracticeDashboard() {
     }
 
     setShowTradeModal(false);
-    setTradeError('');
     setSelectedSymbol('');
     setTradeQuantity('1');
   };
@@ -132,10 +138,11 @@ export function PracticeDashboard() {
     const trade = trades.find(t => t.id === tradeId);
     if (!trade || trade.status !== 'open') return;
 
-    const marketItem = mockMarketData.find(m => m.symbol === trade.symbol);
+    const marketItem = marketData.find((m: any) => m.symbol === trade.symbol) || mockMarketData.find(m => m.symbol === trade.symbol);
     if (!marketItem) return;
 
-    const exitPrice = marketItem.price;
+    const currentPrice = (marketItem.current || marketItem.price || 0);
+    const exitPrice = currentPrice + (Math.random() - 0.5) * currentPrice * 0.02;
     const pnl = trade.side === 'buy'
       ? (exitPrice - trade.entryPrice) * trade.quantity
       : (trade.entryPrice - exitPrice) * trade.quantity;
@@ -157,7 +164,7 @@ export function PracticeDashboard() {
         status: 'closed' as const,
         exitPrice,
         pnl,
-        aiFeedback: feedbacks[pnl > 0 ? 0 : 1],
+        aiFeedback: feedbacks[Math.floor(Math.random() * feedbacks.length)],
         closedAt: new Date().toISOString(),
       } : t
     ));
@@ -185,13 +192,76 @@ export function PracticeDashboard() {
     setTrades(prev => prev.filter(t => t.sessionId !== newSession.id));
   };
 
-  useEffect(() => subscribeToAppActions(action => {
-    if (action === 'practice_start') resetSession();
-    if (action === 'practice_trade') setShowTradeModal(true);
-    if (action === 'practice_score') document.getElementById('practice-score')?.scrollIntoView({ behavior: 'smooth' });
-  }), []);
-
   const openTrades = trades.filter(t => t.status === 'open' && t.sessionId === session.id);
+
+  const symbolsToLoad = ['AAPL', 'MSFT', 'GOOGL', 'TSLA', 'NVDA', 'AMZN', 'META', 'BTC'];
+
+  const fetchMarket = async () => {
+    setLoadingMarket(true);
+    try {
+      console.log('Fetching market data from Finnhub...');
+      const nonCrypto = symbolsToLoad.filter(s => s !== 'BTC');
+      const quotes = await marketAPI.getMultipleQuotes(nonCrypto);
+      
+      console.log('Quotes fetched:', quotes);
+
+      const items = quotes
+        .filter((q: any) => (q.c && q.c > 0) || (q.h && q.h > 0))
+        .map((q: any) => {
+          const current = Number(q.c) || 0;
+          const high = Number(q.h) || 0;
+          const low = Number(q.l) || 0;
+          const changePercent = typeof q.dp === 'number' ? Number(q.dp) : 0;
+          return {
+            symbol: q.symbol,
+            name: q.symbol, // Use symbol as name for now
+            current,
+            high,
+            low,
+            changePercent,
+          };
+        });
+
+      // Fetch BTC separately
+      try {
+        const btc = await marketAPI.getCrypto('BTC');
+        console.log('BTC data:', btc);
+        if (btc.c > 0) {
+          const btcItem = {
+            symbol: 'BTC',
+            name: 'Bitcoin',
+            current: Number(btc.c) || 0,
+            high: Number(btc.h) || 0,
+            low: Number(btc.l) || 0,
+            changePercent: typeof btc.dp === 'number' ? Number(btc.dp) : 0,
+          };
+          items.push(btcItem);
+        }
+      } catch (e) {
+        console.warn('BTC fetch failed:', e);
+      }
+
+      if (items.length > 0) {
+        console.log('Setting market data with', items.length, 'items:', items);
+        setMarketData(items);
+      } else {
+        console.warn('No valid market data received, keeping mock data');
+      }
+    } catch (e) {
+      console.error('Market fetch error:', e);
+    } finally {
+      setLoadingMarket(false);
+    }
+  };
+
+  // initial load + auto-refresh
+  useEffect(() => {
+    fetchMarket();
+    const id = setInterval(() => {
+      if (live) fetchMarket();
+    }, 60000);
+    return () => clearInterval(id);
+  }, [live]);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -205,7 +275,7 @@ export function PracticeDashboard() {
           <label className="text-xs text-slate-400">Account</label>
           <select value={currentSessionId} onChange={e => setCurrentSessionId(e.target.value)} className="glass-input rounded-xl px-3 py-2 text-sm bg-transparent">
             {sessions.map(s => (
-              <option key={s.id} value={s.id}>{`Acct ${s.id.slice(-4)} — €${s.balance.toLocaleString('de-DE', {minimumFractionDigits:2})}`}</option>
+              <option key={s.id} value={s.id}>{`Acct ${s.id.slice(-4)} — €${s.balance.toLocaleString('en-GB', {minimumFractionDigits:2})}`}</option>
             ))}
           </select>
           <Button variant="ghost" size="sm" onClick={resetSession}>New Account</Button>
@@ -216,7 +286,7 @@ export function PracticeDashboard() {
       </div>
 
       {/* Stats Row */}
-      <div id="practice-score" className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <GlassCard className="p-4 flex items-center gap-4" gradient>
           <SkillScoreRing score={session.skillScore} />
           <div>
@@ -227,7 +297,7 @@ export function PracticeDashboard() {
 
         <GlassCard className="p-4" gradient>
           <div className="text-xs text-slate-300 mb-1">Virtual Balance</div>
-          <div className="text-xl font-bold text-white">€{session.balance.toLocaleString('de-DE', { minimumFractionDigits: 2 })}</div>
+          <div className="text-xl font-bold text-white">€{session.balance.toLocaleString('en-GB', { minimumFractionDigits: 2 })}</div>
           <div className="text-xs text-slate-200">
             {totalPnl >= 0 ? '+' : ''}€{totalPnl.toFixed(2)}
           </div>
@@ -305,24 +375,40 @@ export function PracticeDashboard() {
           </div>
 
           <div>
-            <h2 className="text-sm font-medium text-slate-400 mb-1">Scenario Prices</h2>
-            <p className="text-[11px] text-slate-500 mb-3">Fixed educational prices, not live market data.</p>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-medium text-slate-400">Market Data</h2>
+              <div className="flex items-center gap-2">
+                <div className="flex items-center text-xs text-slate-400"> 
+                  <span className="inline-block w-2 h-2 rounded-full bg-green-400 mr-2 animate-pulse" />
+                  Live
+                </div>
+                <Button variant="ghost" size="sm" onClick={() => fetchMarket()}>
+                  <RefreshCw size={14} />
+                </Button>
+              </div>
+            </div>
+
             <div className="space-y-1">
-              {mockMarketData.slice(0, 6).map(m => (
+              {marketData.slice(0, 8).map((m: any) => (
                 <button
                   key={m.symbol}
                   onClick={() => { setSelectedSymbol(m.symbol); setShowTradeModal(true); }}
-                  className="w-full flex items-center justify-between p-2.5 rounded-lg hover:bg-slate-950/90 transition-all text-left"
+                  className="w-full flex flex-col p-3 rounded-lg hover:bg-slate-950/90 transition-all text-left"
                 >
-                  <div>
-                    <div className="text-sm font-medium text-white">{m.symbol}</div>
-                    <div className="text-xs text-slate-500">{m.name}</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-sm text-white">€{m.price.toFixed(2)}</div>
-                    <div className="text-xs text-slate-200">
-                      {m.change >= 0 ? '+' : ''}{m.changePercent.toFixed(2)}%
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm font-medium text-white">{m.symbol} <span className="text-xs text-slate-400 ml-2">{m.name}</span></div>
                     </div>
+                    <div className="text-right">
+                      <div className="text-sm font-bold text-white">€{(m.current || 0).toFixed(2)}</div>
+                      <div className={`text-xs font-medium ${m.changePercent >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {m.changePercent >= 0 ? <TrendingUp size={12} className="inline-block mr-1" /> : <TrendingDown size={12} className="inline-block mr-1" />}
+                        {m.changePercent >= 0 ? '+' : ''}{(m.changePercent || 0).toFixed(2)}%
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-2 text-xs text-slate-400">
+                    H: €{(m.high || 0).toFixed(2)}  L: €{(m.low || 0).toFixed(2)}
                   </div>
                 </button>
               ))}
@@ -342,9 +428,9 @@ export function PracticeDashboard() {
               className="w-full glass-input rounded-xl px-4 py-3 text-sm text-white outline-none bg-transparent"
             >
               <option value="" className="bg-gray-900">Select symbol...</option>
-              {mockMarketData.map(m => (
+              {marketData.map(m => (
                 <option key={m.symbol} value={m.symbol} className="bg-gray-900">
-                  {m.symbol} — €{m.price.toFixed(2)}
+                  {m.symbol} — €{(m.current || 0).toFixed(2)}
                 </option>
               ))}
             </select>
@@ -381,14 +467,13 @@ export function PracticeDashboard() {
             <div className="p-3 rounded-xl bg-slate-950/90 border border-slate-700">
               <div className="text-xs text-slate-400">Estimated Cost</div>
               <div className="text-lg font-bold text-white">
-                €{(parseFloat(tradeQuantity) * (mockMarketData.find(m => m.symbol === selectedSymbol)?.price || 0)).toFixed(2)}
+                €{(parseFloat(tradeQuantity) * (marketData.find((m: any) => m.symbol === selectedSymbol)?.current || 0)).toFixed(2)}
               </div>
               <div className="text-xs text-slate-500">Available: €{session.balance.toLocaleString('de-DE', { minimumFractionDigits: 2 })}</div>
             </div>
           )}
           <div className="flex gap-3 justify-end">
-            {tradeError && <p className="w-full text-xs text-red-300">{tradeError}</p>}
-            <Button variant="ghost" onClick={() => { setShowTradeModal(false); setTradeError(''); }}>Cancel</Button>
+            <Button variant="ghost" onClick={() => setShowTradeModal(false)}>Cancel</Button>
             <Button variant="practice" onClick={executeTrade} disabled={!selectedSymbol || parseFloat(tradeQuantity) <= 0}>
               Place Trade
             </Button>

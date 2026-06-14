@@ -8,6 +8,7 @@ interface GlassCardProps {
   hover?: boolean;
   variant?: 'default' | 'sm' | 'md' | 'lg' | 'xl';
   gradient?: boolean;
+  style?: React.CSSProperties;
 }
 
 export function GlassCard({ 
@@ -17,7 +18,8 @@ export function GlassCard({
   onClick, 
   hover = false,
   variant = 'default',
-  gradient = false
+  gradient = false,
+  style,
 }: GlassCardProps) {
   const glowClass = '';
   const gradientClass = gradient ? 'bg-gradient-to-br from-slate-900/60 via-slate-950/80 to-slate-950/95 border-slate-600/30 shadow-lg' : 'bg-slate-950/90 border border-slate-700 shadow-sm';
@@ -28,6 +30,7 @@ export function GlassCard({
     <div
       className={`${variantClass} p-5 ${hoverClass} ${className}`}
       onClick={onClick}
+      style={style}
     >
       {children}
     </div>
