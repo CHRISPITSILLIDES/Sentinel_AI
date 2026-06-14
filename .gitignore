@@ -17,6 +17,7 @@ build/
 # Environment
 .env
 .env.local
+server/nataconnect.db
 
 # OS
 .DS_Store
